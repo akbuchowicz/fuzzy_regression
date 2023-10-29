@@ -71,7 +71,6 @@ for(i in 1:n){
   }
   qf[[i]] = ro_QF * s + (1-ro_QF)*(1/n) * s
 }
-qf
 
 # creating aggregated fuzzy variable qr
 qr <- list()
@@ -83,4 +82,65 @@ for(i in 1:n){
   qr[[i]] = ro_QR * s + (1-ro_QR)*(1/n) * s
 }
 
+# creatinf fuzzy variable qp
+qp <- list()
+for(i in 1:n){
+  qp[[i]]=TrapezoidalFuzzyNumber(a1 = datax2_QP[i,1],a4 = datax2_QP[i,4],a2 = datax2_QP[i,2],a3 = datax2_QP[i,3])
+}
+
 # not sure if to use n = 500 (before assessing fuzziness) or n = 495 (after)
+
+
+### PART 3: fuzzy regression models ###
+
+# creating final regression dataset
+qr_leftS = qr_rightS = qr_core1 = qr_core2 = rep(NA,n)
+for(i in 1:n){
+  qr_core1[i] = core(qr[[i]])[1]                #trpz parameter: a1
+  qr_core2[i] = core(qr[[i]])[2]                #trpz parameter: a2
+  qr_leftS[i] = qr_core1[i]-supp(qr[[i]])[1]    #trpz parameter: a3
+  qr_rightS[i] = qr_core2[i]+supp(qr[[i]])[2]   #trpz parameter: a4
+}
+
+qr_defuzz = unlist(lapply(qr,value))            
+qp_defuzz = unlist(lapply(qp,value))
+qf_defuzz = unlist(lapply(qf,value))
+
+
+data_reg = data.frame(qr=qr_defuzz,sex=as.factor(data_restaurant2$sex[-to_drop]),
+                      qp=qp_defuzz,qf=qf_defuzz,
+                      qr_core1=qr_core1,qr_core2=qr_core2,qr_leftS=qr_leftS,qr_rightS=qr_rightS,
+                      qr_coreAvg=(qr_core1+qr_core2)/2)
+
+data_reg = data_reg[complete.cases(data_reg),]
+
+# splitting data into train and test sets
+set.seed(21)
+
+sample <- sample(c(TRUE, FALSE), nrow(data_reg), replace=TRUE, prob=c(0.6,0.4))
+train  <- data_reg[sample, ]
+test   <- data_reg[!sample, ]
+
+# non-interactive fuzzy regression model
+out_plrs <- fuzzylm(formula = qr~qp+qf+sex, data = train,method = "plrls")
+summary(out_plrs)
+
+# interactive fuzzy regression model
+X <- out_plrs$x
+J <- ncol(X)-1
+
+res <- optim(fn = flr1,par = rep(1,J+3),X,m=train$qr_coreAvg,l=train$qr_leftS,r=train$qr_rightS,X=X,J=J)
+beta_est <- res$par
+print(beta_est)
+
+# predictions
+test_proc <- fuzzylm(formula = qr~qp+qf+sex, data = test,method = "plrls")$x
+# ^ wydaje mi sie ze powinno to sie dac rade zrobic lepiej niz w taki sposob
+
+Ypred_non <- cbind(test_proc%*%out_plrs$coef[,1],
+                   test_proc%*%out_plrs$coef[,1]-test_proc%*%out_plrs$coef[,2],
+                   test_proc%*%out_plrs$coef[,1]+test_proc%*%out_plrs$coef[,2])
+names(Ypred_non) <- c("m","l","r")
+head(Ypred_non)
+Ypred_interactive <- flr1_predict(test_proc,beta_est)
+head(Ypred_interactive)
