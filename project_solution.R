@@ -1,5 +1,4 @@
 ### set-up ###
-
 rm(list=ls()); graphics.off()
 library(SAFD); library(FuzzyNumbers); library(fuzzyreg); library(EM.Fuzzy); library(psych)
 source("utilities.R")
@@ -55,12 +54,48 @@ JF = length(datax2_QF[1,1,])
 
 # creating covariance matrices for QF and QR fuzzy variables
 
-# due to lack of understanding of SAFD representation of fuzzy variables
-# placeholder values for ro will be used used
+# translating to SAFD
+# QF
+qf_safd <- list()
+for (i in 1:5) {
+  var <- list()
+  for (j in 1:n) {
+    row <- unlist(datax2_QF[j, , i], use.names = FALSE)
+    var[j] <- list(translator(X = data.frame(x = row, alpha = c(0, 1, 1, 0)), nl = 2))
+  }
+  qf_safd[[i]] <- var
+}
 
-ro_QF <- 1/4
-ro_QR <- 1/4
-# ^ placeholder values
+Cmat_qf = matrix(data = NA,nrow = 5,ncol = 5);
+for (i in 1:5) {
+  for (j in 1:5) {
+    Cmat_qf[i,j]=Bcov(qf_safd[[i]][1:n],qf_safd[[j]][1:n])
+  }
+}
+
+# QR
+qr_safd <- list()
+for (i in 1:8) {
+  var <- list()
+  for (j in 1:n) {
+    row <- unlist(datax2_QR[j, , i], use.names = FALSE)
+    var[j] <- list(translator(X = data.frame(x = row, alpha = c(0, 1, 1, 0)), nl = 2))
+  }
+  qr_safd[[i]] <- var
+}
+
+Cmat_qr = matrix(data = NA,nrow = 8,ncol = 8);
+for (i in 1:8) {
+  for (j in 1:8) {
+    Cmat_qr[i,j]=Bcov(qr_safd[[i]][1:n],qr_safd[[j]][1:n])
+  }
+}
+
+# calculating ro
+ro_QF <- psych::alpha(Cmat_qf)$total$raw_alpha
+
+ro_QR <- psych::alpha(Cmat_qr)$total$raw_alpha
+ro_QR
 
 # creating aggregated fuzzy variable qf
 qf <- list()
@@ -121,6 +156,8 @@ sample <- sample(c(TRUE, FALSE), nrow(data_reg), replace=TRUE, prob=c(0.6,0.4))
 train  <- data_reg[sample, ]
 test   <- data_reg[!sample, ]
 
+# ogólnie ponoć można to zrobić robiąc dwa modele, gdzie za wierzchołki zamiast
+# średniej bierze się core'y ale troche nie wiem co wtefy z left i right wiec na razie niech tak zostanie
 # non-interactive fuzzy regression model
 out_plrs <- fuzzylm(formula = qr~qp+qf+sex, data = train,method = "plrls")
 summary(out_plrs)
@@ -140,7 +177,14 @@ test_proc <- fuzzylm(formula = qr~qp+qf+sex, data = test,method = "plrls")$x
 Ypred_non <- cbind(test_proc%*%out_plrs$coef[,1],
                    test_proc%*%out_plrs$coef[,1]-test_proc%*%out_plrs$coef[,2],
                    test_proc%*%out_plrs$coef[,1]+test_proc%*%out_plrs$coef[,2])
-names(Ypred_non) <- c("m","l","r")
 head(Ypred_non)
 Ypred_interactive <- flr1_predict(test_proc,beta_est)
 head(Ypred_interactive)
+head(test[,5:9])
+
+### Part 4: Calculating errors
+r2(test$qr_coreAvg, test$qr_leftS, test$qr_rightS, Ypred_interactive[,1], Ypred_interactive[,2], Ypred_interactive[,3])
+r2(test$qr_coreAvg, test$qr_leftS, test$qr_rightS, Ypred_non[,1], Ypred_non[,2], Ypred_non[,3])
+
+# interactive model seems to be better
+
