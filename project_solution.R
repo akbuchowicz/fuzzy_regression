@@ -117,7 +117,7 @@ for(i in 1:n){
   qr[[i]] = ro_QR * s + (1-ro_QR)*(1/n) * s
 }
 
-# creatinf fuzzy variable qp
+# creating fuzzy variable qp
 qp <- list()
 for(i in 1:n){
   qp[[i]]=TrapezoidalFuzzyNumber(a1 = datax2_QP[i,1],a4 = datax2_QP[i,4],a2 = datax2_QP[i,2],a3 = datax2_QP[i,3])
@@ -134,9 +134,9 @@ for(i in 1:n){
   qr_core1[i] = core(qr[[i]])[1]                #trpz parameter: a1
   qr_core2[i] = core(qr[[i]])[2]                #trpz parameter: a2
   qr_leftS[i] = qr_core1[i]-supp(qr[[i]])[1]    #trpz parameter: a3
-  qr_rightS[i] = qr_core2[i]+supp(qr[[i]])[2]   #trpz parameter: a4
+  qr_rightS[i] = -qr_core2[i]+supp(qr[[i]])[2]   #trpz parameter: a4
 }
-
+# we added minus sign before qr_core2 to have the right spread be a positive number
 qr_defuzz = unlist(lapply(qr,value))            
 qp_defuzz = unlist(lapply(qp,value))
 qf_defuzz = unlist(lapply(qf,value))
@@ -159,6 +159,8 @@ test   <- data_reg[!sample, ]
 # ogólnie ponoć można to zrobić robiąc dwa modele, gdzie za wierzchołki zamiast
 # średniej bierze się core'y ale troche nie wiem co wtefy z left i right wiec na razie niech tak zostanie
 # non-interactive fuzzy regression model
+# we transformed trapezoidal fuzzy varaible to triangular by using average of the cores of the qr variable
+ 
 out_plrs <- fuzzylm(formula = qr~qp+qf+sex, data = train,method = "plrls")
 summary(out_plrs)
 
@@ -174,17 +176,22 @@ print(beta_est)
 test_proc <- fuzzylm(formula = qr~qp+qf+sex, data = test,method = "plrls")$x
 # ^ wydaje mi sie ze powinno to sie dac rade zrobic lepiej niz w taki sposob
 
-Ypred_non <- cbind(test_proc%*%out_plrs$coef[,1],
-                   test_proc%*%out_plrs$coef[,1]-test_proc%*%out_plrs$coef[,2],
-                   test_proc%*%out_plrs$coef[,1]+test_proc%*%out_plrs$coef[,2])
+Ypred_non <- test_proc%*%out_plrs$coef
 head(Ypred_non)
 Ypred_interactive <- flr1_predict(test_proc,beta_est)
 head(Ypred_interactive)
 head(test[,5:9])
 
 ### Part 4: Calculating errors
+r2(Ypred_interactive[,1], Ypred_interactive[,2], Ypred_interactive[,3],test$qr_coreAvg, test$qr_leftS, test$qr_rightS)
+r2(Ypred_non[,1], Ypred_non[,2], Ypred_non[,3],test$qr_coreAvg, test$qr_leftS, test$qr_rightS)
+# it is not symmetrical
 r2(test$qr_coreAvg, test$qr_leftS, test$qr_rightS, Ypred_interactive[,1], Ypred_interactive[,2], Ypred_interactive[,3])
-r2(test$qr_coreAvg, test$qr_leftS, test$qr_rightS, Ypred_non[,1], Ypred_non[,2], Ypred_non[,3])
+r2(test$qr_coreAvg, test$qr_leftS, test$qr_rightS,Ypred_non[,1], Ypred_non[,2], Ypred_non[,3])
+
+# there may be something wrong with the function calculating r2 and rss
+rss(Ypred_interactive[,1], Ypred_interactive[,2], Ypred_interactive[,3],test$qr_coreAvg, test$qr_leftS, test$qr_rightS)
+rss(Ypred_non[,1], Ypred_non[,2], Ypred_non[,3],test$qr_coreAvg, test$qr_leftS, test$qr_rightS)
 
 # interactive model seems to be better
 
